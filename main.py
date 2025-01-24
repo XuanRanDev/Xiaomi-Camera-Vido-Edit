@@ -1,9 +1,10 @@
 import os
 import subprocess
+import random  # 用于随机选择视频
 from datetime import datetime, timedelta
 
 # 设置文件夹路径
-base_folder = 'F:\\XuanRan\\Clip2'
+base_folder = 'F:\\XuanRan\\Clip'
 output_file = 'F:\\XuanRan\\Clip-Res\\final_video.mp4'
 
 
@@ -49,15 +50,17 @@ def select_video_for_day(day_folders):
         video_files = get_video_files_in_folder(folder)
 
         # 筛选 8-16 点之间的视频
+        valid_videos = []
         for video, timestamp in video_files:
             video_time = datetime.fromtimestamp(timestamp)
             if 8 <= video_time.hour < 16:
-                selected_video = os.path.join(folder, video)
-                break
+                valid_videos.append(os.path.join(folder, video))
 
-        # 如果8-16点没有视频，则选择当前文件夹的第一个视频
-        if selected_video:
+        # 如果找到符合条件的视频，则随机选择一个
+        if valid_videos:
+            selected_video = random.choice(valid_videos)
             break
+
     # 若没有找到8-16点的视频，则向后寻找其他时间段的视频（只选一天中的一个）
     if not selected_video and day_folders:
         folder = day_folders[0]
