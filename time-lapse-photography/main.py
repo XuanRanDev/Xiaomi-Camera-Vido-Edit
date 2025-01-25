@@ -5,8 +5,8 @@ from datetime import datetime
 
 # 设置文件夹路径和日志文件
 base_folder = 'F:\\XuanRan\\Clip'
-output_file = 'F:\\XuanRan\\Clip-Res\\final_video.mp4'
-log_file = 'process_log.txt'
+output_file = 'video\\final_video.mp4'
+log_file = 'log\\process_log.txt'
 
 
 # 日志函数
@@ -46,7 +46,7 @@ def speed_up_video(input_video, output_video, speed_factor=39):
 
 # 函数：合并视频文件（重新编码）
 def merge_videos(video_list, output_video):
-    log_message(f"开始合并视频，总计 {len(video_list)} 个文件")
+    log_message(f"{datetime.now()} 开始合并视频，总计 {len(video_list)} 个文件")
     with open('file_list.txt', 'w') as f:
         for video in video_list:
             f.write(f"file '{video}'\n")
@@ -112,7 +112,7 @@ def process_videos():
         selected_video = select_video_for_day(folders)
 
         if selected_video:
-            temp_video = f"temp_{day}.mp4"
+            temp_video = f"temp\\temp_{day}.mp4"
             speed_up_video(selected_video, temp_video)
             video_list.append(temp_video)
 
