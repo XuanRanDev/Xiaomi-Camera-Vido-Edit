@@ -34,7 +34,7 @@ def get_video_files_in_folder(folder):
 def speed_up_video(input_video, output_video):
     log_message(f"开始加速视频: {input_video}")
     command = [
-        'ffmpeg', '-i', input_video, '-filter:v', 'setpts=0.0625*PTS',
+        'ffmpeg', '-i', input_video, '-filter:v', 'setpts=0.02125*PTS',
         '-r', '30', '-an', '-fflags', '+genpts', output_video  # 重新生成时间戳
     ]
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
