@@ -19,4 +19,4 @@ def add_background_music(video_path, audio_path, output_path):
 
 
 # 源文件 背景音乐 输出视频
-add_background_music('final_video.mp4', 'bgm.mp3', 'output_video.mp4')
+add_background_music('..\\time-lapse-photography\\video\\final_video.mp4', 'bgm.mp3', 'output_video.mp4')
