@@ -24,6 +24,7 @@ python -m PyInstaller ^
   --onefile ^
   --name XiaomiCameraVideoEdit ^
   --add-data "config.json;." ^
+  --add-data "icon.ico;." ^
   app\main.py
 
 echo Done. Output: dist\XiaomiCameraVideoEdit.exe

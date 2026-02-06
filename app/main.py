@@ -1,8 +1,9 @@
+import os
 import sys
 from pathlib import Path
 
 from PySide6 import QtCore, QtWidgets
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 
 if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -513,6 +514,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.save_config()
         super().closeEvent(event)
 
+def get_resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        # PyInstaller 打包后的临时目录
+        return os.path.join(sys._MEIPASS, relative_path)
+    # 开发环境的当前目录
+    return os.path.join(os.path.abspath("."), relative_path)
+
 
 def main():
     root_dir = Path(__file__).resolve().parents[1]
@@ -520,6 +528,10 @@ def main():
     config.load()
 
     app = QtWidgets.QApplication(sys.argv)
+
+    icon_path = get_resource_path("icon.ico")
+    app.setWindowIcon(QIcon(icon_path))
+
     apply_theme(app)
     window = MainWindow(config)
     window.show()
