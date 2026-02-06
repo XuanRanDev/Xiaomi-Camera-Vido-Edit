@@ -21,7 +21,15 @@ def log_default(message: str):
 
 def run_command(command, log=log_default):
     log(" ".join(command))
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    creationflags = 0
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        creationflags = subprocess.CREATE_NO_WINDOW
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        creationflags=creationflags,
+    )
     if result.returncode != 0:
         error_text = result.stderr.decode(errors="ignore")
         raise RuntimeError(error_text.strip() or "ffmpeg failed")

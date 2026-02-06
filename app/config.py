@@ -10,7 +10,7 @@ DEFAULT_CONFIG = {
         "speed_factor": 39.0,
         "fps": 30,
         "hour_start": 8,
-        "hour_end": 20,
+        "hour_end": 18,
     },
     "inverted": {
         "input_dir": "",
