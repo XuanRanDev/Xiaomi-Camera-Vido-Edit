@@ -35,6 +35,7 @@ DEFAULT_CONFIG = {
         "scale_percent": 70,
         "crf": 28,
         "preset": "medium",
+        "use_gpu": False,
     },
 }
 

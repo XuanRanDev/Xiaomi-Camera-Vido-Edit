@@ -236,6 +236,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.compress_scale_slider.setValue(int(compress.get("scale_percent", 70)))
         self.compress_crf.setValue(int(compress.get("crf", 28)))
         self.compress_preset.setCurrentText(compress.get("preset", "medium"))
+        self.compress_use_gpu.setChecked(bool(compress.get("use_gpu", False)))
         self.update_compress_estimate()
 
     def save_config(self):
@@ -271,6 +272,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "scale_percent": self.compress_scale.value(),
             "crf": self.compress_crf.value(),
             "preset": self.compress_preset.currentText(),
+            "use_gpu": self.compress_use_gpu.isChecked(),
         }
         self.config.save()
 
@@ -541,6 +543,9 @@ class MainWindow(QtWidgets.QMainWindow):
         )
         params_layout.addRow("编码速度", self.compress_preset)
 
+        self.compress_use_gpu = QtWidgets.QCheckBox("使用 GPU 加速 (NVENC)")
+        params_layout.addRow(self.compress_use_gpu)
+
         self.compress_estimate = QtWidgets.QLabel("估算大小：-")
         params_layout.addRow(self.compress_estimate)
 
@@ -702,6 +707,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.compress_scale.value(),
             self.compress_crf.value(),
             self.compress_preset.currentText(),
+            self.compress_use_gpu.isChecked(),
         )
 
     def start_worker(self, func, *args):

@@ -5,7 +5,7 @@
     "output_file": "output/final_video2.mp4",
     "speed_factor": 39.0,
     "fps": 30,
-    "hour_start": 8,
+    "hour_start": 7,
     "hour_end": 18
   },
   "inverted": {
@@ -26,10 +26,11 @@
     "output_file": "output/concat.mp4"
   },
   "compress": {
-    "input_file": "C:/Users/XuanRan/Downloads/input.mp4",
+    "input_file": "E:/Code/Python/Xiaomi-Camera-Vido-Edit/app/output/with_bgm.mp4",
     "output_file": "output/compressed.mp4",
     "scale_percent": 70,
     "crf": 28,
-    "preset": "medium"
+    "preset": "medium",
+    "use_gpu": true
   }
 }

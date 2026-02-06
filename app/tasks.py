@@ -317,6 +317,7 @@ def compress_video(
     scale_percent: int,
     crf: int,
     preset: str,
+    use_gpu: bool,
     log=log_default,
 ):
     if not input_file.exists():
@@ -325,13 +326,13 @@ def compress_video(
     output_file.parent.mkdir(parents=True, exist_ok=True)
     ratio = max(0.1, min(scale_percent / 100.0, 1.0))
 
-    command = [
+    cpu_command = [
         ffmpeg_path,
         "-y",
         "-i",
         str(input_file),
         "-vf",
-        f"scale=iw*{ratio}:ih*{ratio}",
+        f"scale=trunc(iw*{ratio}/2)*2:trunc(ih*{ratio}/2)*2",
         "-c:v",
         "libx264",
         "-crf",
@@ -344,8 +345,42 @@ def compress_video(
         "128k",
         str(output_file),
     ]
-    log("Compressing video")
-    run_command(command, log=log)
+
+    if use_gpu:
+        gpu_command = [
+            ffmpeg_path,
+            "-y",
+            "-i",
+            str(input_file),
+            "-vf",
+            f"scale=trunc(iw*{ratio}/2)*2:trunc(ih*{ratio}/2)*2",
+            "-c:v",
+            "h264_nvenc",
+            "-rc:v",
+            "vbr",
+            "-cq:v",
+            str(crf),
+            "-b:v",
+            "0",
+            "-preset",
+            "p4",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            str(output_file),
+        ]
+        log("Compressing video (GPU)")
+        try:
+            run_command(gpu_command, log=log)
+        except RuntimeError as exc:
+            log(f"GPU encode failed, fallback to CPU: {exc}")
+            run_command(cpu_command, log=log)
+    else:
+        log("Compressing video (CPU)")
+        run_command(cpu_command, log=log)
     log(f"Compressed output: {output_file}")
 
 
@@ -371,7 +406,7 @@ def generate_compress_preview(
         "-frames:v",
         "1",
         "-vf",
-        f"scale=iw*{ratio}:ih*{ratio}",
+        f"scale=trunc(iw*{ratio}/2)*2:trunc(ih*{ratio}/2)*2",
         "-q:v",
         "2",
         str(output_image),
