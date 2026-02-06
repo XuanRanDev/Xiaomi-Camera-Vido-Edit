@@ -2,7 +2,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtGui import QFont, QIcon
 
 if __package__ in (None, ""):
@@ -10,7 +10,14 @@ if __package__ in (None, ""):
 
 from app.config import AppConfig
 from app.ffmpeg_utils import find_ffmpeg
-from app.tasks import time_lapse, inverted, add_music, concat_two_videos
+from app.tasks import (
+    time_lapse,
+    inverted,
+    add_music,
+    concat_two_videos,
+    compress_video,
+    generate_compress_preview,
+)
 
 
 class Worker(QtCore.QThread):
@@ -27,6 +34,27 @@ class Worker(QtCore.QThread):
     def run(self):
         try:
             self.func(*self.args, log=self.log_signal.emit, **self.kwargs)
+            self.done_signal.emit()
+        except Exception as exc:
+            self.error_signal.emit(str(exc))
+
+
+class ResultWorker(QtCore.QThread):
+    log_signal = QtCore.Signal(str)
+    error_signal = QtCore.Signal(str)
+    result_signal = QtCore.Signal(object)
+    done_signal = QtCore.Signal()
+
+    def __init__(self, func, *args, **kwargs):
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        try:
+            result = self.func(*self.args, log=self.log_signal.emit, **self.kwargs)
+            self.result_signal.emit(result)
             self.done_signal.emit()
         except Exception as exc:
             self.error_signal.emit(str(exc))
@@ -162,11 +190,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.inverted_tab = self.build_inverted_tab()
         self.add_music_tab = self.build_add_music_tab()
         self.concat_tab = self.build_concat_tab()
+        self.compress_tab = self.build_compress_tab()
 
         self.tabs.addTab(self.time_lapse_tab, "延时摄影")
         self.tabs.addTab(self.inverted_tab, "倒放变速")
         self.tabs.addTab(self.add_music_tab, "添加音乐")
         self.tabs.addTab(self.concat_tab, "视频拼接")
+        self.tabs.addTab(self.compress_tab, "画质压缩")
 
         self.worker = None
         self.load_config()
@@ -199,6 +229,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.concat_video_b.setText(concat.get("video_b", ""))
         self.concat_output_file.setText(concat.get("output_file", ""))
 
+        compress = self.config.data["compress"]
+        self.compress_input_file.setText(compress.get("input_file", ""))
+        self.compress_output_file.setText(compress.get("output_file", ""))
+        self.compress_scale.setValue(int(compress.get("scale_percent", 70)))
+        self.compress_scale_slider.setValue(int(compress.get("scale_percent", 70)))
+        self.compress_crf.setValue(int(compress.get("crf", 28)))
+        self.compress_preset.setCurrentText(compress.get("preset", "medium"))
+        self.update_compress_estimate()
+
     def save_config(self):
         self.config.data["ffmpeg_path"] = self.ffmpeg_path.text().strip()
         self.config.data["time_lapse"] = {
@@ -226,6 +265,13 @@ class MainWindow(QtWidgets.QMainWindow):
             "video_b": self.concat_video_b.text().strip(),
             "output_file": self.concat_output_file.text().strip(),
         }
+        self.config.data["compress"] = {
+            "input_file": self.compress_input_file.text().strip(),
+            "output_file": self.compress_output_file.text().strip(),
+            "scale_percent": self.compress_scale.value(),
+            "crf": self.compress_crf.value(),
+            "preset": self.compress_preset.currentText(),
+        }
         self.config.save()
 
     def select_ffmpeg(self):
@@ -251,6 +297,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def add_log(self, message: str):
         self.log_output.appendPlainText(message)
+
+    def format_bytes(self, size_bytes: int) -> str:
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size = float(size_bytes)
+        for unit in units:
+            if size < 1024.0:
+                return f"{size:.2f} {unit}"
+            size /= 1024.0
+        return f"{size:.2f} PB"
+
+    def update_compress_estimate(self):
+        input_path = self.compress_input_file.text().strip()
+        if not input_path:
+            self.compress_estimate.setText("估算大小：-")
+            return
+        path = Path(input_path)
+        if not path.exists():
+            self.compress_estimate.setText("估算大小：-")
+            return
+        ratio = max(0.1, min(self.compress_scale.value() / 100.0, 1.0))
+        estimated = int(path.stat().st_size * ratio * ratio * 0.7)
+        self.compress_estimate.setText(f"估算大小：约 {self.format_bytes(estimated)}")
 
     def build_header(self):
         frame = QtWidgets.QFrame()
@@ -409,6 +477,108 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return widget
 
+    def build_compress_tab(self):
+        widget = QtWidgets.QWidget()
+        outer_layout = QtWidgets.QHBoxLayout(widget)
+        outer_layout.setSpacing(16)
+
+        form_panel = QtWidgets.QWidget()
+        form_layout = QtWidgets.QVBoxLayout(form_panel)
+        form_layout.setSpacing(12)
+
+        source_group = QtWidgets.QGroupBox("输入与输出")
+        source_layout = QtWidgets.QFormLayout(source_group)
+
+        self.compress_input_file = QtWidgets.QLineEdit()
+        self.compress_input_browse = QtWidgets.QPushButton("选择")
+        self.compress_input_browse.clicked.connect(
+            lambda: self.select_open_file(self.compress_input_file, "选择视频文件")
+        )
+        source_layout.addRow("输入视频", self.build_row(self.compress_input_file, self.compress_input_browse))
+
+        self.compress_output_file = QtWidgets.QLineEdit()
+        self.compress_output_browse = QtWidgets.QPushButton("选择")
+        self.compress_output_browse.clicked.connect(
+            lambda: self.select_save_file(self.compress_output_file, "选择输出文件")
+        )
+        source_layout.addRow("输出文件", self.build_row(self.compress_output_file, self.compress_output_browse))
+
+        params_group = QtWidgets.QGroupBox("压缩参数")
+        params_layout = QtWidgets.QFormLayout(params_group)
+
+        self.compress_scale_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.compress_scale_slider.setRange(20, 100)
+        self.compress_scale = QtWidgets.QSpinBox()
+        self.compress_scale.setRange(20, 100)
+        self.compress_scale.setSuffix("%")
+        self.compress_scale_slider.valueChanged.connect(self.compress_scale.setValue)
+        self.compress_scale.valueChanged.connect(self.compress_scale_slider.setValue)
+        self.compress_scale.valueChanged.connect(self.update_compress_estimate)
+
+        scale_layout = QtWidgets.QHBoxLayout()
+        scale_layout.addWidget(self.compress_scale_slider, 1)
+        scale_layout.addWidget(self.compress_scale)
+        params_layout.addRow("缩放比例", self.wrap_layout(scale_layout))
+
+        self.compress_crf = QtWidgets.QSpinBox()
+        self.compress_crf.setRange(18, 35)
+        self.compress_crf.setToolTip("数值越小画质越好，文件越大")
+        params_layout.addRow("画质 (CRF)", self.compress_crf)
+
+        self.compress_preset = QtWidgets.QComboBox()
+        self.compress_preset.addItems(
+            [
+                "ultrafast",
+                "superfast",
+                "veryfast",
+                "faster",
+                "fast",
+                "medium",
+                "slow",
+                "slower",
+                "veryslow",
+            ]
+        )
+        params_layout.addRow("编码速度", self.compress_preset)
+
+        self.compress_estimate = QtWidgets.QLabel("估算大小：-")
+        params_layout.addRow(self.compress_estimate)
+
+        actions_group = QtWidgets.QGroupBox("操作")
+        actions_layout = QtWidgets.QHBoxLayout(actions_group)
+        actions_layout.setSpacing(12)
+
+        self.compress_preview = QtWidgets.QPushButton("预览画质")
+        self.compress_preview.clicked.connect(self.run_compress_preview)
+        self.compress_run = QtWidgets.QPushButton("开始压缩")
+        self.compress_run.clicked.connect(self.run_compress)
+        actions_layout.addWidget(self.compress_preview)
+        actions_layout.addWidget(self.compress_run)
+
+        form_layout.addWidget(source_group)
+        form_layout.addWidget(params_group)
+        form_layout.addWidget(actions_group)
+        form_layout.addStretch(1)
+
+        preview_group = QtWidgets.QGroupBox("预览")
+        preview_layout = QtWidgets.QVBoxLayout(preview_group)
+        self.compress_preview_label = QtWidgets.QLabel("预览图")
+        self.compress_preview_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.compress_preview_label.setMinimumSize(360, 220)
+        self.compress_preview_label.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        preview_hint = QtWidgets.QLabel("提示：预览仅代表缩放效果，实际压缩以输出为准。")
+        preview_hint.setWordWrap(True)
+        preview_layout.addWidget(self.compress_preview_label, 1)
+        preview_layout.addWidget(preview_hint)
+
+        outer_layout.addWidget(form_panel, 3)
+        outer_layout.addWidget(preview_group, 2)
+
+        self.compress_input_file.textChanged.connect(self.update_compress_estimate)
+        self.compress_scale_slider.valueChanged.connect(self.update_compress_estimate)
+
+        return widget
+
     def build_row(self, line_edit, button):
         layout = QtWidgets.QHBoxLayout()
         layout.addWidget(line_edit)
@@ -500,6 +670,40 @@ class MainWindow(QtWidgets.QMainWindow):
             Path(self.concat_output_file.text().strip()),
         )
 
+    def run_compress_preview(self):
+        ffmpeg_path = self.resolve_ffmpeg_path()
+        if not ffmpeg_path:
+            self.add_log("需要设置 FFmpeg 路径。")
+            return
+        self.save_config()
+        self.add_log("生成压缩预览中...")
+        output_image = Path("output") / "preview" / "compress_preview.jpg"
+        self.start_result_worker(
+            generate_compress_preview,
+            ffmpeg_path,
+            Path(self.compress_input_file.text().strip()),
+            output_image,
+            self.compress_scale.value(),
+            self.handle_compress_preview,
+        )
+
+    def run_compress(self):
+        ffmpeg_path = self.resolve_ffmpeg_path()
+        if not ffmpeg_path:
+            self.add_log("需要设置 FFmpeg 路径。")
+            return
+        self.save_config()
+        self.add_log("开始压缩任务...")
+        self.start_worker(
+            compress_video,
+            ffmpeg_path,
+            Path(self.compress_input_file.text().strip()),
+            Path(self.compress_output_file.text().strip()),
+            self.compress_scale.value(),
+            self.compress_crf.value(),
+            self.compress_preset.currentText(),
+        )
+
     def start_worker(self, func, *args):
         if self.worker and self.worker.isRunning():
             self.add_log("已有任务在运行。")
@@ -509,6 +713,31 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.error_signal.connect(self.add_log)
         self.worker.done_signal.connect(lambda: self.add_log("任务完成。"))
         self.worker.start()
+
+    def start_result_worker(self, func, *args):
+        if self.worker and self.worker.isRunning():
+            self.add_log("已有任务在运行。")
+            return
+        result_handler = args[-1]
+        run_args = args[:-1]
+        self.worker = ResultWorker(func, *run_args)
+        self.worker.log_signal.connect(self.add_log)
+        self.worker.error_signal.connect(self.add_log)
+        self.worker.result_signal.connect(result_handler)
+        self.worker.done_signal.connect(lambda: self.add_log("任务完成。"))
+        self.worker.start()
+
+    def handle_compress_preview(self, image_path: str):
+        pixmap = QtGui.QPixmap(image_path)
+        if pixmap.isNull():
+            self.add_log("预览图加载失败。")
+            return
+        scaled = pixmap.scaled(
+            self.compress_preview_label.size(),
+            QtCore.Qt.KeepAspectRatio,
+            QtCore.Qt.SmoothTransformation,
+        )
+        self.compress_preview_label.setPixmap(scaled)
 
     def closeEvent(self, event):
         self.save_config()

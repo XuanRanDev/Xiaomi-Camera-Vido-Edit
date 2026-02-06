@@ -29,6 +29,13 @@ DEFAULT_CONFIG = {
         "video_b": "",
         "output_file": "output/concat.mp4",
     },
+    "compress": {
+        "input_file": "",
+        "output_file": "output/compressed.mp4",
+        "scale_percent": 70,
+        "crf": 28,
+        "preset": "medium",
+    },
 }
 
 

@@ -5,7 +5,7 @@
     "output_file": "output/final_video2.mp4",
     "speed_factor": 39.0,
     "fps": 30,
-    "hour_start": 7,
+    "hour_start": 8,
     "hour_end": 18
   },
   "inverted": {
@@ -15,8 +15,8 @@
     "merge_output": "output/inverted_merged.mp4"
   },
   "add_music": {
-    "video_file": "C:/Users/XuanRan/Desktop/QzoneHistory/2984237943/pictures/沙雕广告哈哈哈哈哈哈哈哈_video_0.mp4",
-    "audio_file": "",
+    "video_file": "C:/Users/XuanRan/Downloads/input.mp4",
+    "audio_file": "C:/Users/XuanRan/Downloads/input.mp3",
     "output_file": "output/with_bgm.mp4",
     "replace_audio": true
   },
@@ -24,5 +24,12 @@
     "video_a": "",
     "video_b": "",
     "output_file": "output/concat.mp4"
+  },
+  "compress": {
+    "input_file": "C:/Users/XuanRan/Downloads/input.mp4",
+    "output_file": "output/compressed.mp4",
+    "scale_percent": 70,
+    "crf": 28,
+    "preset": "medium"
   }
 }

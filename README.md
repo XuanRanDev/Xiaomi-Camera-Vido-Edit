@@ -45,6 +45,12 @@
 - **处理**：仅拼接，不转码。
 - **输出**：拼接成片（默认 `output/concat.mp4`）。
 
+### 5) 画质压缩（Video Compression）
+压缩视频体积，可选压缩比例与画质参数，并提供预览图与体积估算。
+- **输入**：一个视频文件。
+- **处理**：按比例缩放分辨率（如 70%），使用 CRF 进行编码压缩。
+- **输出**：压缩后视频（默认 `output/compressed.mp4`）。
+
 ## 目录与输出规则
 - 所有输出默认放在 `output/` 目录。
 - 中间文件会放在 `output/temp/` 下（任务完成会自动清理）。
@@ -132,6 +138,12 @@ Append Video B after Video A without re-encoding.
 - **Input**: Video A + Video B.
 - **Process**: concat only, no transcoding.
 - **Output**: concatenated video (default `output/concat.mp4`).
+
+### 5) Video Compression
+Reduce file size with adjustable scale and quality, plus preview and size estimate.
+- **Input**: one video file.
+- **Process**: scale resolution (e.g., 70%) and compress with CRF.
+- **Output**: compressed video (default `output/compressed.mp4`).
 
 ## Output structure
 - All outputs go to `output/` by default.

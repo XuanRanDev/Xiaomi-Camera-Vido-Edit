@@ -232,6 +232,8 @@ def add_music(
             "-y",
             "-i",
             str(video_file),
+            "-stream_loop",
+            "-1",
             "-i",
             str(audio_file),
             "-c:v",
@@ -251,6 +253,8 @@ def add_music(
             "-y",
             "-i",
             str(video_file),
+            "-stream_loop",
+            "-1",
             "-i",
             str(audio_file),
             "-filter_complex",
@@ -304,3 +308,75 @@ def concat_two_videos(
     run_command(command, log=log)
     list_file.unlink(missing_ok=True)
     log(f"Concat output: {output_file}")
+
+
+def compress_video(
+    ffmpeg_path: str,
+    input_file: Path,
+    output_file: Path,
+    scale_percent: int,
+    crf: int,
+    preset: str,
+    log=log_default,
+):
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input video not found: {input_file}")
+    output_file = output_file.resolve()
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    ratio = max(0.1, min(scale_percent / 100.0, 1.0))
+
+    command = [
+        ffmpeg_path,
+        "-y",
+        "-i",
+        str(input_file),
+        "-vf",
+        f"scale=iw*{ratio}:ih*{ratio}",
+        "-c:v",
+        "libx264",
+        "-crf",
+        str(crf),
+        "-preset",
+        preset,
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        str(output_file),
+    ]
+    log("Compressing video")
+    run_command(command, log=log)
+    log(f"Compressed output: {output_file}")
+
+
+def generate_compress_preview(
+    ffmpeg_path: str,
+    input_file: Path,
+    output_image: Path,
+    scale_percent: int,
+    log=log_default,
+):
+    if not input_file.exists():
+        raise FileNotFoundError(f"Input video not found: {input_file}")
+    output_image.parent.mkdir(parents=True, exist_ok=True)
+    ratio = max(0.1, min(scale_percent / 100.0, 1.0))
+
+    command = [
+        ffmpeg_path,
+        "-y",
+        "-ss",
+        "00:00:01",
+        "-i",
+        str(input_file),
+        "-frames:v",
+        "1",
+        "-vf",
+        f"scale=iw*{ratio}:ih*{ratio}",
+        "-q:v",
+        "2",
+        str(output_image),
+    ]
+    log("Generating compression preview")
+    run_command(command, log=log)
+    log(f"Preview image: {output_image}")
+    return str(output_image)
