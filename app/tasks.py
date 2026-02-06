@@ -55,6 +55,7 @@ def time_lapse(
     if not day_folders:
         raise RuntimeError("No valid day folders found (expected yyyyMMddHH).")
 
+    output_file = output_file.resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)
     temp_dir = output_file.parent / "temp" / "time-lapse"
     temp_dir.mkdir(parents=True, exist_ok=True)
@@ -82,7 +83,7 @@ def time_lapse(
 
     processed_files = []
     for day, video in selected_videos:
-        temp_output = temp_dir / f"temp_{day}.mp4"
+        temp_output = (temp_dir / f"temp_{day}.mp4").resolve()
         command = [
             ffmpeg_path,
             "-y",
@@ -104,7 +105,7 @@ def time_lapse(
     list_file = temp_dir / "file_list.txt"
     with list_file.open("w", encoding="utf-8") as handle:
         for video in processed_files:
-            handle.write(f"file '{video.as_posix()}'\n")
+            handle.write(f"file '{video.resolve().as_posix()}'\n")
 
     command = [
         ffmpeg_path,
@@ -142,6 +143,8 @@ def inverted(
 ):
     if not input_dir.exists():
         raise FileNotFoundError(f"Input folder not found: {input_dir}")
+    output_dir = output_dir.resolve()
+    merge_output = merge_output.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     merge_output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -152,7 +155,7 @@ def inverted(
 
     processed_files = []
     for video in video_files:
-        output_file = output_dir / f"processed_{video.name}"
+        output_file = (output_dir / f"processed_{video.name}").resolve()
         atempo = build_atempo_filter(speed_factor)
         audio_filter = f"areverse,{atempo}" if speed_factor != 1.0 else "areverse"
         command = [
@@ -173,7 +176,7 @@ def inverted(
     list_file = output_dir / "file_list.txt"
     with list_file.open("w", encoding="utf-8") as handle:
         for video in processed_files:
-            handle.write(f"file '{video.as_posix()}'\n")
+            handle.write(f"file '{video.resolve().as_posix()}'\n")
 
     command = [
         ffmpeg_path,
@@ -213,6 +216,7 @@ def add_music(
         raise FileNotFoundError(f"Video not found: {video_file}")
     if not audio_file.exists():
         raise FileNotFoundError(f"Audio not found: {audio_file}")
+    output_file = output_file.resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)
     if replace_audio:
         command = [
@@ -268,11 +272,12 @@ def concat_two_videos(
         raise FileNotFoundError(f"Video A not found: {video_a}")
     if not video_b.exists():
         raise FileNotFoundError(f"Video B not found: {video_b}")
+    output_file = output_file.resolve()
     output_file.parent.mkdir(parents=True, exist_ok=True)
     list_file = output_file.parent / "concat_list.txt"
     with list_file.open("w", encoding="utf-8") as handle:
-        handle.write(f"file '{video_a.as_posix()}'\n")
-        handle.write(f"file '{video_b.as_posix()}'\n")
+        handle.write(f"file '{video_a.resolve().as_posix()}'\n")
+        handle.write(f"file '{video_b.resolve().as_posix()}'\n")
 
     command = [
         ffmpeg_path,

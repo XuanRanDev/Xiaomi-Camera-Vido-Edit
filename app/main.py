@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 from PySide6 import QtCore, QtWidgets
+from PySide6.QtGui import QFont
 
 if __package__ in (None, ""):
     sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -30,18 +31,105 @@ class Worker(QtCore.QThread):
             self.error_signal.emit(str(exc))
 
 
+
+def apply_theme(app: QtWidgets.QApplication):
+    app.setStyle("Fusion")
+    app.setFont(QFont("Microsoft YaHei UI", 10))
+    app.setStyleSheet(
+        """
+        QMainWindow {
+            background-color: #f3f0e8;
+        }
+        QGroupBox {
+            border: 1px solid #d8d2c3;
+            border-radius: 10px;
+            margin-top: 12px;
+            padding: 10px;
+            background-color: #fffdf8;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 6px;
+            color: #3b3a36;
+            font-weight: 600;
+        }
+        #Header {
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                stop:0 #2f5d50, stop:1 #1d3f36);
+            border-radius: 12px;
+            padding: 16px;
+        }
+        #HeaderTitle {
+            color: #f7f3ea;
+            font-size: 20px;
+            font-weight: 700;
+        }
+        #HeaderSubtitle {
+            color: #d9d2c2;
+            font-size: 11px;
+        }
+        QLineEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {
+            background-color: #ffffff;
+            border: 1px solid #d8d2c3;
+            border-radius: 8px;
+            padding: 6px 8px;
+        }
+        QPlainTextEdit {
+            background-color: #0f1e1a;
+            color: #d9e1d7;
+            border: 1px solid #1c2e28;
+        }
+        QPushButton {
+            background-color: #2f5d50;
+            color: #f7f3ea;
+            border: none;
+            border-radius: 8px;
+            padding: 6px 12px;
+        }
+        QPushButton:hover {
+            background-color: #3a7262;
+        }
+        QPushButton:pressed {
+            background-color: #25493f;
+        }
+        QTabWidget::pane {
+            border: 1px solid #d8d2c3;
+            border-radius: 10px;
+            background-color: #fffdf8;
+        }
+        QTabBar::tab {
+            background-color: #e7e1d5;
+            border: 1px solid #d8d2c3;
+            border-bottom: none;
+            padding: 8px 14px;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            min-width: 90px;
+        }
+        QTabBar::tab:selected {
+            background-color: #fffdf8;
+            color: #1f2c27;
+            font-weight: 600;
+        }
+        QCheckBox {
+            spacing: 6px;
+        }
+        """
+    )
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, config: AppConfig):
         super().__init__()
         self.config = config
         self.setWindowTitle("小米摄像头视频处理")
-        self.resize(980, 720)
+        self.resize(1060, 760)
 
         self.tabs = QtWidgets.QTabWidget()
         self.log_output = QtWidgets.QPlainTextEdit()
         self.log_output.setReadOnly(True)
 
         self.ffmpeg_path = QtWidgets.QLineEdit()
+        self.ffmpeg_path.setPlaceholderText("如未配置 PATH，可在此选择 ffmpeg.exe")
         self.ffmpeg_browse = QtWidgets.QPushButton("浏览")
         self.ffmpeg_browse.clicked.connect(self.select_ffmpeg)
 
@@ -57,8 +145,16 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addWidget(self.tabs, 1)
         main_layout.addWidget(self.log_output, 2)
 
+        content = QtWidgets.QWidget()
+        content.setLayout(main_layout)
+
+        shell_layout = QtWidgets.QVBoxLayout()
+        shell_layout.setSpacing(14)
+        shell_layout.addWidget(self.build_header())
+        shell_layout.addWidget(content, 1)
+
         container = QtWidgets.QWidget()
-        container.setLayout(main_layout)
+        container.setLayout(shell_layout)
         self.setCentralWidget(container)
 
         self.time_lapse_tab = self.build_time_lapse_tab()
@@ -155,21 +251,33 @@ class MainWindow(QtWidgets.QMainWindow):
     def add_log(self, message: str):
         self.log_output.appendPlainText(message)
 
+    def build_header(self):
+        frame = QtWidgets.QFrame()
+        frame.setObjectName("Header")
+        layout = QtWidgets.QVBoxLayout(frame)
+        title = QtWidgets.QLabel("小米摄像头视频处理")
+        title.setObjectName("HeaderTitle")
+        subtitle = QtWidgets.QLabel("批量加速 / 倒放 / 拼接 / 配乐，所有输出都在 output 目录")
+        subtitle.setObjectName("HeaderSubtitle")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+        return frame
+
     def build_time_lapse_tab(self):
         widget = QtWidgets.QWidget()
         layout = QtWidgets.QFormLayout(widget)
 
         self.tl_base_folder = QtWidgets.QLineEdit()
-        self.tl_base_browse = QtWidgets.QPushButton("Browse")
+        self.tl_base_browse = QtWidgets.QPushButton("选择")
         self.tl_base_browse.clicked.connect(
-            lambda: self.select_dir(self.tl_base_folder, "Select base folder")
+            lambda: self.select_dir(self.tl_base_folder, "选择基础目录")
         )
         layout.addRow("基础目录", self.build_row(self.tl_base_folder, self.tl_base_browse))
 
         self.tl_output_file = QtWidgets.QLineEdit()
-        self.tl_output_browse = QtWidgets.QPushButton("Browse")
+        self.tl_output_browse = QtWidgets.QPushButton("选择")
         self.tl_output_browse.clicked.connect(
-            lambda: self.select_save_file(self.tl_output_file, "Select output video")
+            lambda: self.select_save_file(self.tl_output_file, "选择输出文件")
         )
         layout.addRow("输出文件", self.build_row(self.tl_output_file, self.tl_output_browse))
 
@@ -203,23 +311,23 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QFormLayout(widget)
 
         self.inv_input_dir = QtWidgets.QLineEdit()
-        self.inv_input_browse = QtWidgets.QPushButton("Browse")
+        self.inv_input_browse = QtWidgets.QPushButton("选择")
         self.inv_input_browse.clicked.connect(
-            lambda: self.select_dir(self.inv_input_dir, "Select input directory")
+            lambda: self.select_dir(self.inv_input_dir, "选择输入目录")
         )
         layout.addRow("输入目录", self.build_row(self.inv_input_dir, self.inv_input_browse))
 
         self.inv_output_dir = QtWidgets.QLineEdit()
-        self.inv_output_browse = QtWidgets.QPushButton("Browse")
+        self.inv_output_browse = QtWidgets.QPushButton("选择")
         self.inv_output_browse.clicked.connect(
-            lambda: self.select_dir(self.inv_output_dir, "Select output directory")
+            lambda: self.select_dir(self.inv_output_dir, "选择输出目录")
         )
         layout.addRow("输出目录", self.build_row(self.inv_output_dir, self.inv_output_browse))
 
         self.inv_merge_output = QtWidgets.QLineEdit()
-        self.inv_merge_browse = QtWidgets.QPushButton("Browse")
+        self.inv_merge_browse = QtWidgets.QPushButton("选择")
         self.inv_merge_browse.clicked.connect(
-            lambda: self.select_save_file(self.inv_merge_output, "Select merged output")
+            lambda: self.select_save_file(self.inv_merge_output, "选择合并输出")
         )
         layout.addRow("合并输出", self.build_row(self.inv_merge_output, self.inv_merge_browse))
 
@@ -239,23 +347,23 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QFormLayout(widget)
 
         self.am_video_file = QtWidgets.QLineEdit()
-        self.am_video_browse = QtWidgets.QPushButton("Browse")
+        self.am_video_browse = QtWidgets.QPushButton("选择")
         self.am_video_browse.clicked.connect(
-            lambda: self.select_open_file(self.am_video_file, "Select video")
+            lambda: self.select_open_file(self.am_video_file, "选择视频文件")
         )
         layout.addRow("视频文件", self.build_row(self.am_video_file, self.am_video_browse))
 
         self.am_audio_file = QtWidgets.QLineEdit()
-        self.am_audio_browse = QtWidgets.QPushButton("Browse")
+        self.am_audio_browse = QtWidgets.QPushButton("选择")
         self.am_audio_browse.clicked.connect(
-            lambda: self.select_open_file(self.am_audio_file, "Select audio")
+            lambda: self.select_open_file(self.am_audio_file, "选择音频文件")
         )
         layout.addRow("音频文件", self.build_row(self.am_audio_file, self.am_audio_browse))
 
         self.am_output_file = QtWidgets.QLineEdit()
-        self.am_output_browse = QtWidgets.QPushButton("Browse")
+        self.am_output_browse = QtWidgets.QPushButton("选择")
         self.am_output_browse.clicked.connect(
-            lambda: self.select_save_file(self.am_output_file, "Select output video")
+            lambda: self.select_save_file(self.am_output_file, "选择输出文件")
         )
         layout.addRow("输出文件", self.build_row(self.am_output_file, self.am_output_browse))
 
@@ -274,23 +382,23 @@ class MainWindow(QtWidgets.QMainWindow):
         layout = QtWidgets.QFormLayout(widget)
 
         self.concat_video_a = QtWidgets.QLineEdit()
-        self.concat_video_a_browse = QtWidgets.QPushButton("Browse")
+        self.concat_video_a_browse = QtWidgets.QPushButton("选择")
         self.concat_video_a_browse.clicked.connect(
-            lambda: self.select_open_file(self.concat_video_a, "Select video A")
+            lambda: self.select_open_file(self.concat_video_a, "选择视频 1")
         )
         layout.addRow("视频 1", self.build_row(self.concat_video_a, self.concat_video_a_browse))
 
         self.concat_video_b = QtWidgets.QLineEdit()
-        self.concat_video_b_browse = QtWidgets.QPushButton("Browse")
+        self.concat_video_b_browse = QtWidgets.QPushButton("选择")
         self.concat_video_b_browse.clicked.connect(
-            lambda: self.select_open_file(self.concat_video_b, "Select video B")
+            lambda: self.select_open_file(self.concat_video_b, "选择视频 2")
         )
         layout.addRow("视频 2", self.build_row(self.concat_video_b, self.concat_video_b_browse))
 
         self.concat_output_file = QtWidgets.QLineEdit()
-        self.concat_output_browse = QtWidgets.QPushButton("Browse")
+        self.concat_output_browse = QtWidgets.QPushButton("选择")
         self.concat_output_browse.clicked.connect(
-            lambda: self.select_save_file(self.concat_output_file, "Select output video")
+            lambda: self.select_save_file(self.concat_output_file, "选择输出文件")
         )
         layout.addRow("输出文件", self.build_row(self.concat_output_file, self.concat_output_browse))
 
@@ -412,6 +520,7 @@ def main():
     config.load()
 
     app = QtWidgets.QApplication(sys.argv)
+    apply_theme(app)
     window = MainWindow(config)
     window.show()
     sys.exit(app.exec())

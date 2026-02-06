@@ -13,6 +13,7 @@
 - **高效预览**：把“全年录像”压缩成十几分钟，方便快速回顾。
 - **可复用流程**：所有参数可保存、复用，不需要每次重复配置。
 - **可视化操作**：避免命令行操作门槛，所有功能都能在 GUI 中完成。
+- **安全无损**：只读取原视频，所有处理结果都会输出为新文件。
 
 ## 功能概览
 ### 1) 延时摄影（Time-lapse）
@@ -100,6 +101,7 @@ If you have massive camera recordings stored by day/hour (e.g., on NAS or HDD), 
 - **Fast review**: compress months or a year of footage into minutes.
 - **Reusable workflow**: all parameters are saved and reusable.
 - **GUI-driven**: no command line required.
+- **Non-destructive**: source videos are never modified; outputs are new files.
 
 ## Features
 ### 1) Time-lapse
