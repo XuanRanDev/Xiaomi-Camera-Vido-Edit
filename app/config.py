@@ -12,6 +12,17 @@ DEFAULT_CONFIG = {
         "hour_start": 8,
         "hour_end": 18,
     },
+    "time_lapse2": {
+        "base_folder": "",
+        "output_file": "output/final_video_v2.mp4",
+        "speed_factor": 20.0,
+        "fps": 30,
+        "hour_start": 7,
+        "hour_end": 18,
+        "date_start": "",
+        "date_end": "",
+        "use_gpu": False,
+    },
     "inverted": {
         "input_dir": "",
         "output_dir": "output/inverted",

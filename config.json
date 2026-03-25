@@ -8,6 +8,17 @@
     "hour_start": 7,
     "hour_end": 18
   },
+  "time_lapse2": {
+    "base_folder": "H:/监控视频/老家/2026/022612-",
+    "output_file": "output/final_video_v2.mp4",
+    "speed_factor": 43.0,
+    "fps": 30,
+    "hour_start": 7,
+    "hour_end": 18,
+    "date_start": "20260206",
+    "date_end": "20260310",
+    "use_gpu": true
+  },
   "inverted": {
     "input_dir": "E:/Download/BaiduDownload/jksp",
     "output_dir": "output/inverted",
@@ -26,11 +37,11 @@
     "output_file": "output/concat.mp4"
   },
   "compress": {
-    "input_file": "E:/Code/Python/Xiaomi-Camera-Vido-Edit/app/output/with_bgm.mp4",
-    "output_file": "output/compressed.mp4",
+    "input_file": "C:/Users/XuanRan/Desktop/Water/Screenrecorder-2026-02-28-14-23-56-94.mp4",
+    "output_file": "C:/Users/XuanRan/Desktop/Water/2/支付宝支付.mp4",
     "scale_percent": 70,
     "crf": 28,
     "preset": "medium",
-    "use_gpu": true
+    "use_gpu": false
   }
 }

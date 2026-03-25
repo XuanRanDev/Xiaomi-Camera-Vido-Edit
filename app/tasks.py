@@ -9,6 +9,7 @@ from .ffmpeg_utils import build_atempo_filter
 
 
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mkv", ".mov")
+TIME_FOLDER_PATTERN = re.compile(r"^(\d{8})(\d{2})$")
 
 
 def natural_key(value: str):
@@ -33,6 +34,66 @@ def run_command(command, log=log_default):
     if result.returncode != 0:
         error_text = result.stderr.decode(errors="ignore")
         raise RuntimeError(error_text.strip() or "ffmpeg failed")
+
+
+def run_command_stream(command, log=log_default, line_handler=None):
+    log(" ".join(command))
+    creationflags = 0
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        creationflags = subprocess.CREATE_NO_WINDOW
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        creationflags=creationflags,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+    )
+    error_lines = []
+    for raw_line in process.stderr:
+        line = raw_line.strip()
+        if not line:
+            continue
+        error_lines.append(line)
+        if len(error_lines) > 200:
+            error_lines.pop(0)
+        if line_handler:
+            line_handler(line, log)
+    process.wait()
+    if process.returncode != 0:
+        raise RuntimeError("\n".join(error_lines) or "ffmpeg failed")
+
+
+def _parse_time_folder_name(folder_name: str):
+    match = TIME_FOLDER_PATTERN.match(folder_name)
+    if not match:
+        return None
+    day = match.group(1)
+    hour = int(match.group(2))
+    if hour < 0 or hour > 23:
+        return None
+    try:
+        day_date = datetime.strptime(day, "%Y%m%d").date()
+    except ValueError:
+        return None
+    return day, day_date, hour
+
+
+def discover_time_lapse2_slots(base_folder: Path):
+    if not base_folder.exists():
+        raise FileNotFoundError(f"Base folder not found: {base_folder}")
+    slots = []
+    for root, dirs, _ in os.walk(base_folder):
+        for folder_name in dirs:
+            parsed = _parse_time_folder_name(folder_name)
+            if not parsed:
+                continue
+            day, day_date, hour = parsed
+            folder_path = Path(root) / folder_name
+            slots.append((day, day_date, hour, folder_path))
+    slots.sort(key=lambda item: (item[0], item[2], item[3].as_posix().lower()))
+    return slots
 
 
 def time_lapse(
@@ -139,6 +200,210 @@ def time_lapse(
         file.unlink(missing_ok=True)
     list_file.unlink(missing_ok=True)
     log(f"Time-lapse output: {output_file}")
+
+
+def time_lapse2(
+    ffmpeg_path: str,
+    base_folder: Path,
+    output_file: Path,
+    speed_factor: float,
+    fps: int,
+    hour_start: int,
+    hour_end: int,
+    date_start: str,
+    date_end: str,
+    use_gpu: bool,
+    log=log_default,
+):
+    if hour_start > hour_end:
+        raise ValueError("Hour range is invalid: start must be <= end.")
+    if date_start and date_end and date_start > date_end:
+        raise ValueError("Date range is invalid: start must be <= end.")
+
+    slots = discover_time_lapse2_slots(base_folder)
+    if not slots:
+        raise RuntimeError("No valid hourly folders found (expected yyyyMMddHH).")
+
+    selected_by_day = {}
+    for day, _, hour, folder_path in slots:
+        if date_start and day < date_start:
+            continue
+        if date_end and day > date_end:
+            continue
+        if hour < hour_start or hour > hour_end:
+            continue
+        selected_by_day.setdefault(day, []).append((hour, folder_path))
+
+    if not selected_by_day:
+        raise RuntimeError("No folders matched the selected date/hour range.")
+
+    output_file = output_file.resolve()
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    temp_dir = output_file.parent / "temp" / "time-lapse-v2"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    selected_videos = []
+    for day in sorted(selected_by_day.keys()):
+        hour_folders = sorted(
+            selected_by_day[day], key=lambda item: (item[0], item[1].as_posix().lower())
+        )
+        day_count = 0
+        for hour, folder in hour_folders:
+            video_files = [item for item in folder.iterdir() if item.suffix.lower() in VIDEO_EXTENSIONS]
+            video_files.sort(key=lambda item: natural_key(item.name))
+            for video in video_files:
+                selected_videos.append((day, hour, video))
+                day_count += 1
+        log(f"{day}: selected {day_count} videos ({hour_start:02d}-{hour_end:02d}).")
+
+    if not selected_videos:
+        raise RuntimeError("No videos found in matched folders.")
+
+    # Fast path: concat source videos first, then speed up in a single ffmpeg run.
+    source_list_file = temp_dir / "source_list.txt"
+    with source_list_file.open("w", encoding="utf-8") as handle:
+        for _, _, video in selected_videos:
+            handle.write(f"file '{video.resolve().as_posix()}'\n")
+
+    def fast_line_handler(line: str, logger):
+        if "Opening '" in line and "' for reading" in line:
+            start = line.find("Opening '") + len("Opening '")
+            end = line.find("' for reading", start)
+            if end > start:
+                current = Path(line[start:end]).name
+                logger(f"当前读取: {current}")
+            return
+        if line.startswith("out_time="):
+            logger(f"进度时间: {line.split('=', 1)[1]}")
+            return
+        if line.startswith("speed="):
+            logger(f"编码速度: {line.split('=', 1)[1]}")
+            return
+
+    video_codec_args = [
+        "-c:v",
+        "libx264",
+        "-crf",
+        "23",
+        "-preset",
+        "veryfast",
+    ]
+    if use_gpu:
+        video_codec_args = [
+            "-c:v",
+            "h264_nvenc",
+            "-rc:v",
+            "vbr",
+            "-cq:v",
+            "23",
+            "-b:v",
+            "0",
+            "-preset",
+            "p4",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+
+    fast_command = [
+        ffmpeg_path,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(source_list_file),
+        "-vf",
+        f"setpts={1 / speed_factor}*PTS,fps={fps}",
+        "-an",
+        "-progress",
+        "pipe:2",
+        "-nostats",
+        *video_codec_args,
+        str(output_file),
+    ]
+    try:
+        mode_text = "GPU" if use_gpu else "CPU"
+        log(f"Using fast single-pass mode for time-lapse2 ({mode_text})")
+        log(f"Total videos: {len(selected_videos)}")
+        run_command_stream(fast_command, log=log, line_handler=fast_line_handler)
+        source_list_file.unlink(missing_ok=True)
+        log(f"Time-lapse2 output: {output_file}")
+        return
+    except RuntimeError as fast_exc:
+        log(f"Fast mode failed, fallback to compatibility mode: {fast_exc}")
+        log(f"Compatibility mode encoder: {'GPU(NVENC)' if use_gpu else 'CPU(libx264)'}")
+
+    fallback_encode_args = [
+        "-c:v",
+        "libx264",
+        "-preset",
+        "ultrafast",
+    ]
+    if use_gpu:
+        fallback_encode_args = [
+            "-c:v",
+            "h264_nvenc",
+            "-rc:v",
+            "vbr",
+            "-cq:v",
+            "24",
+            "-b:v",
+            "0",
+            "-preset",
+            "p1",
+            "-pix_fmt",
+            "yuv420p",
+        ]
+
+    processed_files = []
+    for index, (day, hour, video) in enumerate(selected_videos, start=1):
+        temp_output = (temp_dir / f"temp_{index:06d}.mp4").resolve()
+        command = [
+            ffmpeg_path,
+            "-y",
+            "-i",
+            str(video),
+            "-filter:v",
+            f"setpts={1 / speed_factor}*PTS",
+            "-r",
+            str(fps),
+            "-an",
+            "-fflags",
+            "+genpts",
+            *fallback_encode_args,
+            str(temp_output),
+        ]
+        log(f"[{index}/{len(selected_videos)}] speeding {day} {hour:02d} {video.name}")
+        run_command(command, log=log)
+        processed_files.append(temp_output)
+
+    merged_list_file = temp_dir / "file_list.txt"
+    with merged_list_file.open("w", encoding="utf-8") as handle:
+        for video in processed_files:
+            handle.write(f"file '{video.resolve().as_posix()}'\n")
+
+    merge_command = [
+        ffmpeg_path,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(merged_list_file),
+        "-c",
+        "copy",
+        str(output_file),
+    ]
+    log("Merging videos for time-lapse2 (fallback mode)")
+    run_command(merge_command, log=log)
+
+    source_list_file.unlink(missing_ok=True)
+    for file in processed_files:
+        file.unlink(missing_ok=True)
+    merged_list_file.unlink(missing_ok=True)
+    log(f"Time-lapse2 output: {output_file}")
 
 
 def inverted(

@@ -12,6 +12,8 @@ from app.config import AppConfig
 from app.ffmpeg_utils import find_ffmpeg
 from app.tasks import (
     time_lapse,
+    time_lapse2,
+    discover_time_lapse2_slots,
     inverted,
     add_music,
     concat_two_videos,
@@ -187,12 +189,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(container)
 
         self.time_lapse_tab = self.build_time_lapse_tab()
+        self.time_lapse2_tab = self.build_time_lapse2_tab()
         self.inverted_tab = self.build_inverted_tab()
         self.add_music_tab = self.build_add_music_tab()
         self.concat_tab = self.build_concat_tab()
         self.compress_tab = self.build_compress_tab()
 
         self.tabs.addTab(self.time_lapse_tab, "延时摄影")
+        self.tabs.addTab(self.time_lapse2_tab, "延时摄影2")
         self.tabs.addTab(self.inverted_tab, "倒放变速")
         self.tabs.addTab(self.add_music_tab, "添加音乐")
         self.tabs.addTab(self.concat_tab, "视频拼接")
@@ -211,6 +215,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tl_fps.setValue(int(tl.get("fps", 30)))
         self.tl_hour_start.setValue(int(tl.get("hour_start", 8)))
         self.tl_hour_end.setValue(int(tl.get("hour_end", 20)))
+
+        tl2 = self.config.data["time_lapse2"]
+        self.tl2_base_folder.setText(tl2.get("base_folder", ""))
+        self.tl2_output_file.setText(tl2.get("output_file", ""))
+        self.tl2_speed.setValue(float(tl2.get("speed_factor", 20.0)))
+        self.tl2_fps.setValue(int(tl2.get("fps", 30)))
+        self.tl2_hour_start.setValue(int(tl2.get("hour_start", 7)))
+        self.tl2_hour_end.setValue(int(tl2.get("hour_end", 18)))
+        self.tl2_use_gpu.setChecked(bool(tl2.get("use_gpu", False)))
+        start_raw = tl2.get("date_start", "")
+        end_raw = tl2.get("date_end", "")
+        start_date = QtCore.QDate.fromString(start_raw, "yyyyMMdd")
+        end_date = QtCore.QDate.fromString(end_raw, "yyyyMMdd")
+        if not start_date.isValid():
+            start_date = QtCore.QDate.currentDate()
+        if not end_date.isValid():
+            end_date = QtCore.QDate.currentDate()
+        self.tl2_date_start.setDate(start_date)
+        self.tl2_date_end.setDate(end_date)
 
         inv = self.config.data["inverted"]
         self.inv_input_dir.setText(inv.get("input_dir", ""))
@@ -248,6 +271,17 @@ class MainWindow(QtWidgets.QMainWindow):
             "fps": self.tl_fps.value(),
             "hour_start": self.tl_hour_start.value(),
             "hour_end": self.tl_hour_end.value(),
+        }
+        self.config.data["time_lapse2"] = {
+            "base_folder": self.tl2_base_folder.text().strip(),
+            "output_file": self.tl2_output_file.text().strip(),
+            "speed_factor": self.tl2_speed.value(),
+            "fps": self.tl2_fps.value(),
+            "hour_start": self.tl2_hour_start.value(),
+            "hour_end": self.tl2_hour_end.value(),
+            "date_start": self.tl2_date_start.date().toString("yyyyMMdd"),
+            "date_end": self.tl2_date_end.date().toString("yyyyMMdd"),
+            "use_gpu": self.tl2_use_gpu.isChecked(),
         }
         self.config.data["inverted"] = {
             "input_dir": self.inv_input_dir.text().strip(),
@@ -374,6 +408,73 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tl_run = QtWidgets.QPushButton("开始延时摄影")
         self.tl_run.clicked.connect(self.run_time_lapse)
         layout.addRow(self.tl_run)
+
+        return widget
+
+    def build_time_lapse2_tab(self):
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QFormLayout(widget)
+
+        self.tl2_base_folder = QtWidgets.QLineEdit()
+        self.tl2_base_browse = QtWidgets.QPushButton("选择")
+        self.tl2_base_browse.clicked.connect(
+            lambda: self.select_dir(self.tl2_base_folder, "选择基础目录")
+        )
+        layout.addRow("基础目录", self.build_row(self.tl2_base_folder, self.tl2_base_browse))
+
+        self.tl2_scan_btn = QtWidgets.QPushButton("解析目录")
+        self.tl2_scan_btn.clicked.connect(self.scan_time_lapse2_range)
+        self.tl2_range_label = QtWidgets.QLabel("可用范围：未解析")
+        self.tl2_range_label.setWordWrap(True)
+        scan_row = QtWidgets.QHBoxLayout()
+        scan_row.addWidget(self.tl2_scan_btn)
+        scan_row.addWidget(self.tl2_range_label, 1)
+        layout.addRow("目录解析", self.wrap_layout(scan_row))
+
+        self.tl2_date_start = QtWidgets.QDateEdit()
+        self.tl2_date_start.setCalendarPopup(True)
+        self.tl2_date_start.setDisplayFormat("yyyy-MM-dd")
+        self.tl2_date_end = QtWidgets.QDateEdit()
+        self.tl2_date_end.setCalendarPopup(True)
+        self.tl2_date_end.setDisplayFormat("yyyy-MM-dd")
+        date_row = QtWidgets.QHBoxLayout()
+        date_row.addWidget(self.tl2_date_start)
+        date_row.addWidget(QtWidgets.QLabel("到"))
+        date_row.addWidget(self.tl2_date_end)
+        layout.addRow("日期范围", self.wrap_layout(date_row))
+
+        self.tl2_hour_start = QtWidgets.QSpinBox()
+        self.tl2_hour_start.setRange(0, 23)
+        self.tl2_hour_end = QtWidgets.QSpinBox()
+        self.tl2_hour_end.setRange(0, 23)
+        hour_row = QtWidgets.QHBoxLayout()
+        hour_row.addWidget(self.tl2_hour_start)
+        hour_row.addWidget(QtWidgets.QLabel("到"))
+        hour_row.addWidget(self.tl2_hour_end)
+        layout.addRow("小时范围(含结束)", self.wrap_layout(hour_row))
+
+        self.tl2_output_file = QtWidgets.QLineEdit()
+        self.tl2_output_browse = QtWidgets.QPushButton("选择")
+        self.tl2_output_browse.clicked.connect(
+            lambda: self.select_save_file(self.tl2_output_file, "选择输出文件")
+        )
+        layout.addRow("输出文件", self.build_row(self.tl2_output_file, self.tl2_output_browse))
+
+        self.tl2_speed = QtWidgets.QDoubleSpinBox()
+        self.tl2_speed.setRange(0.1, 200.0)
+        self.tl2_speed.setDecimals(2)
+        layout.addRow("倍速", self.tl2_speed)
+
+        self.tl2_fps = QtWidgets.QSpinBox()
+        self.tl2_fps.setRange(1, 240)
+        layout.addRow("帧率", self.tl2_fps)
+
+        self.tl2_use_gpu = QtWidgets.QCheckBox("使用 GPU 加速 (NVENC)")
+        layout.addRow(self.tl2_use_gpu)
+
+        self.tl2_run = QtWidgets.QPushButton("开始延时摄影2")
+        self.tl2_run.clicked.connect(self.run_time_lapse2)
+        layout.addRow(self.tl2_run)
 
         return widget
 
@@ -626,6 +727,68 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tl_fps.value(),
             self.tl_hour_start.value(),
             self.tl_hour_end.value(),
+        )
+
+    def scan_time_lapse2_range(self):
+        base_text = self.tl2_base_folder.text().strip()
+        if not base_text:
+            self.add_log("请先选择延时摄影2的基础目录。")
+            return
+        base_folder = Path(base_text)
+        try:
+            slots = discover_time_lapse2_slots(base_folder)
+        except Exception as exc:
+            self.add_log(f"解析目录失败：{exc}")
+            return
+        if not slots:
+            self.tl2_range_label.setText("可用范围：未找到 yyyyMMddHH 子目录")
+            self.add_log("未发现形如 yyyyMMddHH 的子目录。")
+            return
+        days = sorted({item[1] for item in slots})
+        min_day = days[0]
+        max_day = days[-1]
+        min_qdate = QtCore.QDate(min_day.year, min_day.month, min_day.day)
+        max_qdate = QtCore.QDate(max_day.year, max_day.month, max_day.day)
+        self.tl2_date_start.setMinimumDate(min_qdate)
+        self.tl2_date_start.setMaximumDate(max_qdate)
+        self.tl2_date_end.setMinimumDate(min_qdate)
+        self.tl2_date_end.setMaximumDate(max_qdate)
+        self.tl2_date_start.setDate(min_qdate)
+        self.tl2_date_end.setDate(max_qdate)
+        day_count = len(days)
+        folder_count = len(slots)
+        self.tl2_range_label.setText(
+            f"可用范围：{min_day.month}月{min_day.day}日 到 {max_day.month}月{max_day.day}日（{day_count}天，{folder_count}个小时目录）"
+        )
+        self.add_log(
+            f"延时摄影2目录解析完成：{min_day.strftime('%Y-%m-%d')} ~ {max_day.strftime('%Y-%m-%d')}，共 {day_count} 天。"
+        )
+
+    def run_time_lapse2(self):
+        ffmpeg_path = self.resolve_ffmpeg_path()
+        if not ffmpeg_path:
+            self.add_log("需要设置 FFmpeg 路径。")
+            return
+        if self.tl2_hour_start.value() > self.tl2_hour_end.value():
+            self.add_log("延时摄影2小时范围无效：开始小时必须小于或等于结束小时。")
+            return
+        if self.tl2_date_start.date() > self.tl2_date_end.date():
+            self.add_log("延时摄影2日期范围无效：开始日期必须小于或等于结束日期。")
+            return
+        self.save_config()
+        self.add_log("开始延时摄影2任务...")
+        self.start_worker(
+            time_lapse2,
+            ffmpeg_path,
+            Path(self.tl2_base_folder.text().strip()),
+            Path(self.tl2_output_file.text().strip()),
+            self.tl2_speed.value(),
+            self.tl2_fps.value(),
+            self.tl2_hour_start.value(),
+            self.tl2_hour_end.value(),
+            self.tl2_date_start.date().toString("yyyyMMdd"),
+            self.tl2_date_end.date().toString("yyyyMMdd"),
+            self.tl2_use_gpu.isChecked(),
         )
 
     def run_inverted(self):
